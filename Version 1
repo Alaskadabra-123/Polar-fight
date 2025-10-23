@@ -1,267 +1,436 @@
-import React, { useState } from "react";
-import { motion } from "framer-motion";
-
-const MAX_HP = 150;
-const DAMAGE_SCALE = MAX_HP / 100;
-
-const TEAMS = {
-  PENGUIN: "penguin",
-  BEAR: "bear",
-} as const;
-
-type Team = typeof TEAMS[keyof typeof TEAMS];
-
-type Move = {
-  name: string;
-  power: number;
-  element: string;
-  symbol: string;
-};
-
-type Unit = {
-  id: string;
-  team: Team;
-  hp: number;
-  name: string;
-  moves: Move[];
-};
-
-const teamEmoji = (team: Team) => (team === TEAMS.PENGUIN ? "🐧" : "🐻‍❄️");
-
-const CHARACTERS: Record<Team, Unit> = {
-  penguin: {
-    id: "P1",
-    team: TEAMS.PENGUIN,
-    hp: MAX_HP,
-    name: "Penguin",
-    moves: [
-      { name: "Frost Peck", power: 6 * DAMAGE_SCALE, element: "Ice", symbol: "❄️" },
-      { name: "Aqua Dash", power: 8 * DAMAGE_SCALE, element: "Water", symbol: "💧" },
-      { name: "Chill Heal", power: -5 * DAMAGE_SCALE, element: "Heal", symbol: "✨" },
-      { name: "Wind Flap", power: 6 * DAMAGE_SCALE, element: "Air", symbol: "💨" },
-    ],
-  },
-  bear: {
-    id: "B1",
-    team: TEAMS.BEAR,
-    hp: MAX_HP,
-    name: "Polar Bear",
-    moves: [
-      { name: "Claw Swipe", power: 7 * DAMAGE_SCALE, element: "Earth", symbol: "🌍" },
-      { name: "Blizzard Roar", power: 8 * DAMAGE_SCALE, element: "Ice", symbol: "❄️" },
-      { name: "Hibernate", power: -6 * DAMAGE_SCALE, element: "Heal", symbol: "💤" },
-      { name: "Tundra Smash", power: 9 * DAMAGE_SCALE, element: "Rock", symbol: "🪨" },
-    ],
-  },
-};
-
-export default function PenguinsVsPolarBears() {
-  const [player1, setPlayer1] = useState<Unit | null>(null);
-  const [player2, setPlayer2] = useState<Unit | null>(null);
-  const [turn, setTurn] = useState<Team>(TEAMS.PENGUIN);
-  const [history, setHistory] = useState<string[]>([]);
-  const [battleStarted, setBattleStarted] = useState(false);
-
-  const bothSelected = player1 && player2;
-
-  const elementAdvantages: Record<string, string> = {
-    Ice: "Water",
-    Water: "Rock",
-    Earth: "Air",
-    Rock: "Ice",
-  };
-
-  const reactionChart: Record<string, Record<string, string>> = {
-    Ice: { Water: "Freeze Reaction - Extra 1 dmg!", Air: "Frost Storm - Double hit!" },
-    Water: { Rock: "Erosion - +2 dmg!" },
-    Earth: { Air: "Dust Burst - +1 dmg!" },
-    Rock: { Ice: "Crack Chill - Defense break!" },
-  };
-
-  function getReaction(move1: string, move2: string) {
-    if (reactionChart[move1]?.[move2]) return reactionChart[move1][move2];
-    if (reactionChart[move2]?.[move1]) return reactionChart[move2][move1];
-    return null;
-  }
-
-  function performMove(move: Move) {
-    if (!player1 || !player2) return;
-    const isCrit = Math.random() < 0.2;
-    let damage = isCrit ? move.power * 2 : move.power;
-
-    const attacker = turn === TEAMS.PENGUIN ? { ...player1 } : { ...player2 };
-    const defender = turn === TEAMS.PENGUIN ? { ...player2 } : { ...player1 };
-
-    let log = `${attacker.name} ${move.symbol} used ${move.name}!`;
-
-    if (move.power > 0) {
-      const randomDefMove = defender.moves[Math.floor(Math.random() * defender.moves.length)];
-
-      if (elementAdvantages[move.element] === randomDefMove.element) {
-        damage *= 1.5;
-        log += ` 🌟 Elemental Advantage!`;
-      }
-
-      defender.hp = Math.max(0, defender.hp - Math.round(damage));
-      if (isCrit) log += ` 💥 Critical Hit! (${Math.round(damage)} dmg)`;
-    } else {
-      attacker.hp = Math.min(MAX_HP, attacker.hp - Math.round(move.power));
-      log += ` 🧊 Healed ${-Math.round(move.power)} HP!`;
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Penguins vs Polar Bears — Simple</title>
+  <style>
+    :root{
+      --bg:#f3f7fb; --card:#fff; --accent:#3b82f6; --muted:#6b7280;
     }
+    html,body{height:100%;margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,"Helvetica Neue",Arial;}
+    body{background:var(--bg);display:flex;align-items:center;justify-content:center;padding:24px;}
+    .app{width:900px;max-width:100%;background:var(--card);border-radius:12px;box-shadow:0 6px 30px rgba(15,23,42,0.08);padding:20px;}
+    h1{margin:0 0 8px;font-size:20px}
+    p.sub{margin:0 0 16px;color:var(--muted);font-size:13px}
+    .row{display:flex;gap:12px;align-items:center}
+    .center{justify-content:center}
+    .select-grid{display:flex;gap:12px}
+    .team-card{flex:1;background:#f9fafb;border:1px solid #e6eef9;border-radius:10px;padding:14px;text-align:center;cursor:pointer;transition:transform .12s,box-shadow .12s}
+    .team-card:hover{transform:translateY(-4px);box-shadow:0 6px 18px rgba(59,130,246,0.08)}
+    .team-card.disabled{opacity:.45;cursor:not-allowed;transform:none;box-shadow:none}
+    .team-emoji{font-size:44px}
+    .btn{background:var(--accent);color:white;padding:8px 12px;border-radius:10px;border:0;cursor:pointer}
+    .btn.ghost{background:transparent;color:var(--accent);border:1px solid #dbeafe}
+    .hp-bar{height:10px;background:#e6eef9;border-radius:12px;overflow:hidden;width:240px}
+    .hp-fill{height:100%;background:#ef4444;width:100%;transition:width .25s}
+    .panel{background:#fff;border-radius:10px;padding:12px;border:1px solid #eef2ff}
+    .moves-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
+    .move-btn{display:flex;justify-content:space-between;align-items:center;padding:8px;border-radius:8px;border:1px solid #eef2ff;background:#f8fbff;cursor:pointer}
+    .move-icon{font-size:18px;margin-right:8px}
+    .log{max-height:160px;overflow:auto;padding:8px;background:#fbfdff;border-radius:8px;border:1px solid #eef2ff}
+    .log-item{font-size:13px;padding:6px;border-radius:6px;background:#fff;margin-bottom:6px;border:1px solid #f1f5f9}
+    .muted{color:var(--muted);font-size:13px}
+    .winner{background:#fff8e6;border-color:#ffedd5;color:#92400e;padding:12px;border-radius:10px;font-weight:600}
+    .small{font-size:12px;color:var(--muted)}
+    footer{margin-top:12px;text-align:center;font-size:12px;color:var(--muted)}
+  </style>
+</head>
+<body>
+  <div class="app" id="app">
+    <h1>Penguins 🐧 vs Polar Bears 🐻‍❄️</h1>
+    <p class="sub">Two-player hot-seat — choose characters, take turns, and win. Critical hits and elemental chemistry included.</p>
 
-    const reaction = getReaction(move.element, defender.moves[Math.floor(Math.random() * defender.moves.length)].element);
-    if (reaction) {
-      log += ` ⚗️ ${reaction}`;
-      defender.hp = Math.max(0, defender.hp - Math.round(2 * DAMAGE_SCALE));
-    }
-
-    setHistory(h => [log, ...h]);
-    if (turn === TEAMS.PENGUIN) {
-      setPlayer1(attacker);
-      setPlayer2(defender);
-    } else {
-      setPlayer2(attacker);
-      setPlayer1(defender);
-    }
-    setTurn(turn === TEAMS.PENGUIN ? TEAMS.BEAR : TEAMS.PENGUIN);
-  }
-
-  // Updated winner logic: Determine based on actual remaining HP instead of fixed teams
-  const winner = player1 && player2 && (player1.hp <= 0 || player2.hp <= 0)
-    ? player1.hp <= 0 && player2.hp > 0
-      ? player2.name
-      : player2.hp <= 0 && player1.hp > 0
-      ? player1.name
-      : null
-    : null;
-
-  function reset() {
-    setPlayer1(null);
-    setPlayer2(null);
-    setTurn(TEAMS.PENGUIN);
-    setHistory([]);
-    setBattleStarted(false);
-  }
-
-  if (!bothSelected || !battleStarted) {
-    return (
-      <div className="min-h-screen bg-gradient-to-b from-blue-50 to-sky-100 p-6 flex flex-col items-center justify-center">
-        <h1 className="text-3xl font-bold mb-4">Choose Characters</h1>
-        {!player1 ? (
-          <div className="flex gap-6">
-            {[TEAMS.PENGUIN, TEAMS.BEAR].map(team => (
-              <motion.button
-                key={team}
-                whileTap={{ scale: 0.95 }}
-                onClick={() => setPlayer1({ ...CHARACTERS[team] })}
-                className="bg-white rounded-3xl p-6 shadow hover:shadow-md text-center w-48"
-              >
-                <div className="text-6xl mb-2">{teamEmoji(team)}</div>
-                <p className="font-semibold text-lg">{team === TEAMS.PENGUIN ? "Penguin" : "Polar Bear"}</p>
-              </motion.button>
-            ))}
-          </div>
-        ) : !player2 ? (
-          <div className="flex flex-col items-center">
-            <h2 className="text-xl mb-3">Player 2, choose your character</h2>
-            <div className="flex gap-6">
-              {[TEAMS.PENGUIN, TEAMS.BEAR].map(team => (
-                <motion.button
-                  key={team}
-                  whileTap={{ scale: 0.95 }}
-                  onClick={() => setPlayer2({ ...CHARACTERS[team] })}
-                  className="bg-white rounded-3xl p-6 shadow hover:shadow-md text-center w-48"
-                >
-                  <div className="text-6xl mb-2">{teamEmoji(team)}</div>
-                  <p className="font-semibold text-lg">{team === TEAMS.PENGUIN ? "Penguin" : "Polar Bear"}</p>
-                </motion.button>
-              ))}
-            </div>
-          </div>
-        ) : (
-          <motion.button
-            whileTap={{ scale: 0.95 }}
-            onClick={() => setBattleStarted(true)}
-            className="mt-6 px-4 py-2 bg-green-500 text-white rounded-xl shadow hover:bg-green-600"
-          >
-            Start Battle
-          </motion.button>
-        )}
-      </div>
-    );
-  }
-
-  return (
-    <div className="min-h-screen w-full bg-gradient-to-b from-blue-50 to-sky-100 p-4 md:p-8">
-      <div className="mx-auto max-w-4xl grid grid-cols-1 gap-6">
-        <header className="flex items-center justify-between mb-4">
-          <div>
-            <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Penguins 🐧 vs Polar Bears 🐻‍❄️</h1>
-            <p className="text-sm md:text-base text-slate-600">Turn-based elemental duel ⚗️</p>
-          </div>
-          <button onClick={reset} className="px-3 py-2 rounded-2xl shadow bg-white hover:shadow-md">New Game</button>
-        </header>
-
-        <div className="bg-white rounded-3xl shadow-lg p-6 grid grid-rows-2 gap-6">
-          <div className="flex justify-between items-center">
-            <div className="flex flex-col items-start">
-              <span className="font-semibold">{player2.name} {teamEmoji(player2.team)}</span>
-              <div className="w-40 h-3 bg-slate-200 rounded-full overflow-hidden">
-                <motion.div className="h-full bg-red-500" animate={{ width: `${(player2.hp / MAX_HP) * 100}%` }} />
-              </div>
-              <span className="text-xs text-slate-500">HP: {player2.hp}/{MAX_HP}</span>
-            </div>
-            <motion.div className="text-6xl">{teamEmoji(player2.team)}</motion.div>
-          </div>
-
-          <div className="flex justify-between items-center">
-            <motion.div className="text-6xl">{teamEmoji(player1.team)}</motion.div>
-            <div className="flex flex-col items-end">
-              <span className="font-semibold">{player1.name} {teamEmoji(player1.team)}</span>
-              <div className="w-40 h-3 bg-slate-200 rounded-full overflow-hidden">
-                <motion.div className="h-full bg-red-500" animate={{ width: `${(player1.hp / MAX_HP) * 100}%` }} />
-              </div>
-              <span className="text-xs text-slate-500">HP: {player1.hp}/{MAX_HP}</span>
-            </div>
-          </div>
-        </div>
-
-        {!winner ? (
-          <div className="bg-white rounded-3xl shadow-lg p-6">
-            <h3 className="font-semibold mb-2">{turn === TEAMS.PENGUIN ? "Penguin" : "Polar Bear"}'s Turn {teamEmoji(turn)}</h3>
-            <div className="grid grid-cols-2 gap-2">
-              {(turn === TEAMS.PENGUIN ? player1.moves : player2.moves).map(move => (
-                <motion.button
-                  key={move.name}
-                  onClick={() => performMove(move)}
-                  whileTap={{ scale: 0.95 }}
-                  className="px-3 py-2 rounded-xl shadow bg-blue-100 hover:bg-blue-200 text-sm font-medium flex items-center justify-between"
-                >
-                  <span>{move.symbol}</span>
-                  <span>{move.name}</span>
-                </motion.button>
-              ))}
-            </div>
-          </div>
-        ) : (
-          <div className="bg-yellow-200 text-yellow-900 rounded-3xl shadow-lg p-6 text-center font-bold">
-            🏆 {winner} wins!
-          </div>
-        )}
-
-        <div className="bg-white rounded-2xl shadow p-4">
-          <h3 className="font-semibold mb-2">Battle Log</h3>
-          <div className="h-48 overflow-auto space-y-2">
-            {history.length === 0 ? (
-              <p className="text-sm text-slate-500">No actions yet. Make the first move!</p>
-            ) : (
-              history.map((h, i) => (
-                <div key={i} className="text-sm p-2 rounded-lg bg-slate-50 border border-slate-100">{h}</div>
-              ))
-            )}
-          </div>
-        </div>
+    <!-- Selection -->
+    <div id="selectionRoot">
+      <div id="selectionStage" class="panel">
+        <div id="selectionContent"></div>
       </div>
     </div>
-  );
-}
+
+    <!-- Battle -->
+    <div id="battleRoot" style="display:none">
+      <div style="display:flex;gap:18px;align-items:center;flex-wrap:wrap;margin-bottom:12px">
+        <div class="panel" style="flex:1">
+          <div class="row">
+            <div style="width:64px;text-align:center"><div id="p1Emoji" class="team-emoji">🐧</div></div>
+            <div style="flex:1">
+              <div id="p1Name" style="font-weight:600">Player 1</div>
+              <div class="row" style="align-items:center;gap:10px;margin-top:6px">
+                <div class="hp-bar"><div id="p1Fill" class="hp-fill"></div></div>
+                <div id="p1HP" class="small">150/150</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel" style="flex:1;text-align:right">
+          <div class="row" style="justify-content:flex-end">
+            <div style="flex:1">
+              <div id="p2Name" style="font-weight:600">Player 2</div>
+              <div class="row" style="justify-content:flex-end;align-items:center;gap:10px;margin-top:6px">
+                <div id="p2HP" class="small">150/150</div>
+                <div class="hp-bar" style="width:240px"><div id="p2Fill" class="hp-fill"></div></div>
+              </div>
+            </div>
+            <div style="width:64px;text-align:center"><div id="p2Emoji" class="team-emoji">🐻‍❄️</div></div>
+          </div>
+        </div>
+      </div>
+
+      <div id="turnPanel" class="panel" style="margin-bottom:12px">
+        <div class="row" style="justify-content:space-between;align-items:center">
+          <div><strong id="turnLabel">Penguin's Turn</strong> <span class="small" id="turnEmoji">🐧</span></div>
+          <div class="row">
+            <button class="btn ghost" id="resetBtn">Back to Selection</button>
+            <button class="btn" id="newGameBtn" style="margin-left:8px">Reset Match</button>
+          </div>
+        </div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 360px;gap:12px">
+        <div class="panel">
+          <div id="movesTitle"><strong>Available Moves</strong></div>
+          <div style="height:10px"></div>
+          <div class="moves-grid" id="movesGrid"></div>
+        </div>
+
+        <div class="panel">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+            <div><strong>Battle Log</strong></div>
+            <div class="small muted">latest first</div>
+          </div>
+          <div class="log" id="log"></div>
+        </div>
+      </div>
+
+      <div id="endBox" style="margin-top:12px"></div>
+    </div>
+
+    <footer>Simple vanilla JS version — two-player hot-seat</footer>
+  </div>
+
+  <script>
+  (function(){
+    // --- constants & helpers ---
+    const MAX_HP = 150;
+    const DAMAGE_SCALE = MAX_HP / 100; // 1.5
+    const CRIT_CHANCE = 0.2; // 20%
+
+    const TEAMS = {
+      PENGUIN: 'penguin',
+      BEAR: 'bear'
+    };
+
+    function emojiFor(team){ return team === TEAMS.PENGUIN ? '🐧' : '🐻‍❄️'; }
+    function clamp(v, a, b){ return Math.max(a, Math.min(b, v)); }
+    function rndChance(p){ return Math.random() < p; }
+
+    // Characters (one preset per species, kept simple)
+    const CHARACTERS = {
+      penguin: {
+        id:'penguin',
+        team:TEAMS.PENGUIN,
+        name:'Penguin',
+        hp:MAX_HP,
+        moves:[
+          {name:'Frost Peck', power: Math.round(6 * DAMAGE_SCALE), element:'Ice', symbol:'❄️'},
+          {name:'Aqua Dash', power: Math.round(8 * DAMAGE_SCALE), element:'Water', symbol:'💧'},
+          {name:'Chill Heal', power: Math.round(-5 * DAMAGE_SCALE), element:'Heal', symbol:'✨'},
+          {name:'Wind Flap', power: Math.round(6 * DAMAGE_SCALE), element:'Air', symbol:'💨'}
+        ]
+      },
+      bear: {
+        id:'bear',
+        team:TEAMS.BEAR,
+        name:'Polar Bear',
+        hp:MAX_HP,
+        moves:[
+          {name:'Claw Swipe', power: Math.round(7 * DAMAGE_SCALE), element:'Earth', symbol:'🌍'},
+          {name:'Blizzard Roar', power: Math.round(8 * DAMAGE_SCALE), element:'Ice', symbol:'❄️'},
+          {name:'Hibernate', power: Math.round(-6 * DAMAGE_SCALE), element:'Heal', symbol:'💤'},
+          {name:'Tundra Smash', power: Math.round(9 * DAMAGE_SCALE), element:'Rock', symbol:'🪨'}
+        ]
+      }
+    };
+
+    // Elemental advantage mapping and reaction table
+    const ELEMENT_ADV = { Ice:'Water', Water:'Rock', Earth:'Air', Rock:'Ice' };
+    const REACTIONS = {
+      Ice: { Water:'Freeze Reaction — extra 2 dmg!', Air:'Frost Storm — double-hit!' },
+      Water: { Rock:'Erosion — +2 dmg!' },
+      Earth: { Air:'Dust Burst — +1 dmg!' },
+      Rock: { Ice:'Crack Chill — defense break!' }
+    };
+
+    function getReaction(e1,e2){
+      if (!e1 || !e2) return null;
+      if (REACTIONS[e1] && REACTIONS[e1][e2]) return REACTIONS[e1][e2];
+      if (REACTIONS[e2] && REACTIONS[e2][e1]) return REACTIONS[e2][e1];
+      return null;
+    }
+
+    // --- state ---
+    let P1 = null; // object copy of chosen char for player1
+    let P2 = null; // player2
+    let turn = TEAMS.PENGUIN; // whose turn (team identity used for "turn label")
+    let history = [];
+    let battleStarted = false;
+
+    // --- dom refs ---
+    const selectionRoot = document.getElementById('selectionRoot');
+    const selectionContent = document.getElementById('selectionContent');
+    const battleRoot = document.getElementById('battleRoot');
+    const p1Emoji = document.getElementById('p1Emoji');
+    const p2Emoji = document.getElementById('p2Emoji');
+    const p1Name = document.getElementById('p1Name');
+    const p2Name = document.getElementById('p2Name');
+    const p1Fill = document.getElementById('p1Fill');
+    const p2Fill = document.getElementById('p2Fill');
+    const p1HP = document.getElementById('p1HP');
+    const p2HP = document.getElementById('p2HP');
+    const turnLabel = document.getElementById('turnLabel');
+    const turnEmoji = document.getElementById('turnEmoji');
+    const movesGrid = document.getElementById('movesGrid');
+    const logEl = document.getElementById('log');
+    const endBox = document.getElementById('endBox');
+    const resetBtn = document.getElementById('resetBtn');
+    const newGameBtn = document.getElementById('newGameBtn');
+
+    // --- selection UI setup ---
+    function renderSelection(){
+      // selectionContent is a panel area - we'll inject UI
+      selectionContent.innerHTML = '';
+      const frag = document.createElement('div');
+      frag.innerHTML = `
+        <div style="display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap">
+          <div style="flex:1;min-width:260px">
+            <div style="font-weight:600;margin-bottom:8px">Player 1 — Choose a team</div>
+            <div class="select-grid" id="p1Choices"></div>
+          </div>
+          <div style="flex:1;min-width:260px">
+            <div style="font-weight:600;margin-bottom:8px">Player 2 — Choose a team</div>
+            <div class="select-grid" id="p2Choices"></div>
+          </div>
+        </div>
+        <div style="margin-top:12px;text-align:center" id="startArea"></div>
+      `;
+      selectionContent.appendChild(frag);
+
+      const p1Choices = document.getElementById('p1Choices');
+      const p2Choices = document.getElementById('p2Choices');
+      const startArea = document.getElementById('startArea');
+
+      // create choice cards for both players
+      ['penguin','bear'].forEach(team => {
+        const c1 = document.createElement('div');
+        c1.className = 'team-card';
+        c1.innerHTML = `<div class="team-emoji">${emojiFor(team==='penguin'?TEAMS.PENGUIN:TEAMS.BEAR)}</div><div style="font-weight:600">${team==='penguin'?'Penguin':'Polar Bear'}</div>`;
+        c1.onclick = () => {
+          P1 = JSON.parse(JSON.stringify(CHARACTERS[team]));
+          renderSelection(); // rerender to reflect selection
+        };
+        if (P1 && P1.id === CHARACTERS[team].id) c1.style.boxShadow = '0 6px 18px rgba(59,130,246,0.12)';
+        p1Choices.appendChild(c1);
+
+        const c2 = document.createElement('div');
+        c2.className = 'team-card';
+        c2.innerHTML = `<div class="team-emoji">${emojiFor(team==='penguin'?TEAMS.PENGUIN:TEAMS.BEAR)}</div><div style="font-weight:600">${team==='penguin'?'Penguin':'Polar Bear'}</div>`;
+        c2.onclick = () => {
+          // allow both players choose same species
+          P2 = JSON.parse(JSON.stringify(CHARACTERS[team]));
+          renderSelection();
+        };
+        if (P2 && P2.id === CHARACTERS[team].id) c2.style.boxShadow = '0 6px 18px rgba(59,130,246,0.12)';
+        p2Choices.appendChild(c2);
+      });
+
+      // start button
+      startArea.innerHTML = '';
+      const startBtn = document.createElement('button');
+      startBtn.className = 'btn';
+      startBtn.textContent = 'Start Battle';
+      startBtn.onclick = () => {
+        if (!P1 || !P2){ alert('Both players must pick a character.'); return; }
+        battleStarted = true;
+        turn = TEAMS.PENGUIN;
+        history = [];
+        updateBattleUI();
+        selectionRoot.style.display = 'none';
+        battleRoot.style.display = '';
+        endBox.innerHTML = '';
+      };
+      if (!P1 || !P2) startBtn.disabled = true;
+      startArea.appendChild(startBtn);
+
+      // show current selections summary
+      const summary = document.createElement('div');
+      summary.className = 'small muted';
+      summary.style.marginTop = '8px';
+      summary.textContent = `Selected: Player1=${P1?P1.name:'—'} , Player2=${P2?P2.name:'—'}`;
+      startArea.appendChild(summary);
+    }
+
+    // --- battle UI updates ---
+    function updateBattleUI(){
+      // header / HP
+      p1Emoji.textContent = emojiFor(P1.team);
+      p2Emoji.textContent = emojiFor(P2.team);
+      p1Name.textContent = 'Player 1';
+      p2Name.textContent = 'Player 2';
+      p1Fill.style.width = ((P1.hp / MAX_HP) * 100) + '%';
+      p2Fill.style.width = ((P2.hp / MAX_HP) * 100) + '%';
+      p1HP.textContent = `${P1.hp}/${MAX_HP}`;
+      p2HP.textContent = `${P2.hp}/${MAX_HP}`;
+
+      turnLabel.textContent = (turn === TEAMS.PENGUIN ? 'Penguin' : 'Polar Bear') + "'s Turn";
+      turnEmoji.textContent = emojiFor(turn);
+
+      // moves for current active player
+      movesGrid.innerHTML = '';
+      const moves = (turn === TEAMS.PENGUIN ? P1.moves : P2.moves);
+      moves.forEach(mv=>{
+        const btn = document.createElement('button');
+        btn.className = 'move-btn';
+        btn.innerHTML = `<span><span class="move-icon">${mv.symbol}</span> <strong>${mv.name}</strong></span><span class="small">${mv.power >= 0 ? mv.power : 'heal ' + Math.abs(mv.power)}</span>`;
+        btn.onclick = () => {
+          if (isBattleOver()) return;
+          performMove(mv);
+        };
+        movesGrid.appendChild(btn);
+      });
+
+      renderLog();
+      renderWinnerIfAny();
+    }
+
+    function log(msg){
+      history.unshift(msg);
+      renderLog();
+    }
+
+    function renderLog(){
+      logEl.innerHTML = '';
+      history.slice(0,200).forEach(it=>{
+        const d = document.createElement('div');
+        d.className = 'log-item';
+        d.textContent = it;
+        logEl.appendChild(d);
+      });
+    }
+
+    function isBattleOver(){
+      return (P1.hp <= 0 || P2.hp <= 0);
+    }
+
+    // perform move logic (critical, elemental adv, reaction)
+    function performMove(move){
+      const isCrit = rndChance(CRIT_CHANCE);
+      let damage = isCrit ? move.power * 2 : move.power;
+      const attacker = (turn === TEAMS.PENGUIN) ? P1 : P2;
+      const defender = (turn === TEAMS.PENGUIN) ? P2 : P1;
+
+      let msg = `${attacker.name} ${move.symbol} used ${move.name}!`;
+
+      if (move.power > 0){
+        // pick a random defender move to simulate defender element context (keeps simple)
+        const randomDefMove = defender.moves[Math.floor(Math.random()*defender.moves.length)];
+
+        // elemental advantage
+        if (ELEMENT_ADVANTAGE(move.element, randomDefMove.element)){
+          damage = Math.round(damage * 1.5);
+          msg += ' 🌟 Elemental Advantage!';
+        } else {
+          damage = Math.round(damage);
+        }
+
+        // apply damage (clamp)
+        defender.hp = Math.max(0, defender.hp - damage);
+
+        if (isCrit) msg += ` 💥 Critical Hit! (${damage} dmg)`;
+      } else {
+        // heal
+        const heal = Math.abs(Math.round(move.power));
+        attacker.hp = Math.min(MAX_HP, attacker.hp + heal);
+        msg += ` ✨ Healed ${heal} HP!`;
+      }
+
+      // reaction check (extra effect)
+      const reaction = getReaction(move.element, defender.moves[Math.floor(Math.random()*defender.moves.length)].element);
+      if (reaction){
+        msg += ' ⚗️ ' + reaction;
+        // small extra damage for reaction
+        defender.hp = Math.max(0, defender.hp - Math.round(2 * DAMAGE_SCALE));
+      }
+
+      log(msg);
+
+      // commit updated objects (they're references)
+      updateBattleUI();
+
+      // check end
+      if (isBattleOver()){
+        setTimeout(()=> showEnd(), 300);
+        return;
+      }
+
+      // switch turn
+      turn = (turn === TEAMS.PENGUIN) ? TEAMS.BEAR : TEAMS.PENGUIN;
+      updateBattleUI();
+    }
+
+    function ELEMENT_ADVANTAGE(e1,e2){
+      if (!e1 || !e2) return false;
+      return ELEMENT_ADV[e1] === e2;
+    }
+
+    function showEnd(){
+      const winner = determineWinnerName();
+      endBox.innerHTML = '';
+      const w = document.createElement('div');
+      w.className = 'winner';
+      w.textContent = `🏆 ${winner} wins!`;
+      endBox.appendChild(w);
+    }
+
+    function determineWinnerName(){
+      // if both alive -> none
+      if (P1.hp > 0 && P2.hp > 0) return null;
+      if (P1.hp <= 0 && P2.hp <= 0) return 'Draw';
+      // whichever has hp > 0 wins. Show "Player 1" or "Player 2"
+      if (P1.hp > 0) return 'Player 1';
+      if (P2.hp > 0) return 'Player 2';
+      return null;
+    }
+
+    // wire reset/back buttons
+    resetBtn.onclick = ()=>{
+      selectionRoot.style.display = '';
+      battleRoot.style.display = 'none';
+      // keep choices but let players pick again — or fully reset?
+      // We'll bring them back to selection and keep their picks (so they can switch)
+      renderSelection();
+    };
+    newGameBtn.onclick = ()=>{
+      // full reset match but keep selected characters
+      if (P1) P1.hp = MAX_HP;
+      if (P2) P2.hp = MAX_HP;
+      history = [];
+      turn = TEAMS.PENGUIN;
+      endBox.innerHTML = '';
+      updateBattleUI();
+    };
+
+    // helpers wiring above constants to names
+    function ELEMENT_ADV(e){ return ELEMENT_ADV_MAP[e]; }
+    // create an inner mapping for quick check
+    const ELEMENT_ADV_MAP = (function(){ const map = {}; Object.keys(ELEMENT_ADV).forEach(k=>map[k]=ELEMENT_ADV[k]); return map; })();
+
+    // initial render
+    renderSelection();
+
+  })();
+  </script>
+</body>
+</html>
+
