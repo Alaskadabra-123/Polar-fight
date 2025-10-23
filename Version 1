@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pokémon Battle with Sprites</title>
+<style>
+  body {
+    font-family: 'Poppins', sans-serif;
+    background: linear-gradient(to bottom, #9cd2f9, #eaf6ff);
+    text-align: center;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+  }
+
+  .battlefield {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: space-between;
+    height: 100vh;
+    padding: 20px;
+  }
+
+  .creature {
+    position: relative;
+    text-align: center;
+    width: 300px;
+    background: rgba(255,255,255,0.9);
+    border-radius: 15px;
+    box-shadow: 0 0 10px rgba(0,0,0,0.25);
+    padding: 10px;
+  }
+
+  .hp-bar {
+    height: 20px;
+    width: 100%;
+    background: #ddd;
+    border-radius: 10px;
+    overflow: hidden;
+    margin-top: 5px;
+  }
+
+  .hp {
+    height: 100%;
+    background: linear-gradient(to right, #4CAF50, #2ecc71);
+    width: 100%;
+    transition: width 0.5s;
+  }
+
+  .sprites {
+    position: relative;
+    width: 100%;
+    height: 250px;
+  }
+
+  .sprite {
+    position: absolute;
+    width: 180px;
+    transition: transform 0.3s, opacity 0.3s;
+  }
+
+  .player-sprite {
+    bottom: 0;
+    left: 50px;
+  }
+
+  .enemy-sprite {
+    top: 0;
+    right: 50px;
+    transform: scaleX(-1);
+  }
+
+  .battle-log {
+    background: #fff;
+    padding: 15px;
+    width: 420px;
+    height: 120px;
+    overflow-y: auto;
+    border-radius: 10px;
+    box-shadow: 0 0 8px rgba(0,0,0,0.2);
+  }
+
+  .moves button {
+    margin: 10px;
+    padding: 10px 15px;
+    border: none;
+    background: #007bff;
+    color: white;
+    border-radius: 10px;
+    cursor: pointer;
+    font-size: 1rem;
+    transition: 0.2s;
+  }
+
+  .moves button:hover {
+    background: #0056b3;
+  }
+
+  .flash {
+    animation: flash 0.2s ease-in-out 2;
+  }
+
+  .shake {
+    animation: shake 0.3s ease-in-out 3;
+  }
+
+  @keyframes flash {
+    0%, 100% { filter: brightness(1); }
+    50% { filter: brightness(2); }
+  }
+
+  @keyframes shake {
+    0%, 100% { transform: translateX(0); }
+    25% { transform: translateX(-10px); }
+    75% { transform: translateX(10px); }
+  }
+</style>
+</head>
+<body>
+
+<div class="battlefield">
+  <div id="enemy" class="creature">
+    <h2>Bearon (Ice)</h2>
+    <div class="hp-bar"><div class="hp" id="enemy-hp"></div></div>
+    <p id="enemy-hp-text">HP: 100 / 100</p>
+  </div>
+
+  <div class="sprites">
+    <img src="https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/38.png" class="sprite enemy-sprite" id="enemy-sprite" alt="Bearon">
+    <img src="https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/393.png" class="sprite player-sprite" id="player-sprite" alt="Penguinmon">
+  </div>
+
+  <div id="player" class="creature">
+    <h2>Penguinmon (Water)</h2>
+    <div class="hp-bar"><div class="hp" id="player-hp"></div></div>
+    <p id="player-hp-text">HP: 100 / 100</p>
+  </div>
+
+  <div class="moves">
+    <button onclick="playerAttack('Bubble Jet', 'Water')">Bubble Jet</button>
+    <button onclick="playerAttack('Ice Punch', 'Ice')">Ice Punch</button>
+    <button onclick="playerAttack('Aqua Heal', 'Heal')">Aqua Heal</button>
+  </div>
+
+  <div class="battle-log" id="log"></div>
+</div>
+
+<script>
+  const player = { name: "Penguinmon", type: "Water", hp: 100, maxHp: 100, attack: 25, defense: 10 };
+  const enemy = { name: "Bearon", type: "Ice", hp: 100, maxHp: 100, attack: 20, defense: 12 };
+
+  const typeChart = {
+    Water:   { Fire: 2.0, Ice: 1.2, Grass: 0.5, Water: 1.0 },
+    Fire:    { Grass: 2.0, Water: 0.5, Ice: 1.5, Fire: 1.0 },
+    Ice:     { Water: 0.8, Grass: 2.0, Fire: 0.5, Ice: 1.0 },
+    Grass:   { Water: 2.0, Fire: 0.5, Ice: 1.0, Grass: 1.0 }
+  };
+
+  function log(message) {
+    const logBox = document.getElementById('log');
+    logBox.innerHTML += message + "<br>";
+    logBox.scrollTop = logBox.scrollHeight;
+  }
+
+  function updateHpBars() {
+    document.getElementById('player-hp').style.width = (player.hp / player.maxHp * 100) + "%";
+    document.getElementById('enemy-hp').style.width = (enemy.hp / enemy.maxHp * 100) + "%";
+    document.getElementById('player-hp-text').innerText = `HP: ${player.hp} / ${player.maxHp}`;
+    document.getElementById('enemy-hp-text').innerText = `HP: ${enemy.hp} / ${enemy.maxHp}`;
+  }
+
+  function getTypeMultiplier(attackerType, defenderType) {
+    return typeChart[attackerType]?.[defenderType] || 1.0;
+  }
+
+  function damageCalc(attacker, defender, movePower, moveType) {
+    const rand = 0.8 + Math.random() * 0.4;
+    const typeMultiplier = getTypeMultiplier(moveType, defender.type);
+    const baseDamage = movePower * (attacker.attack / defender.defense);
+    const totalDamage = Math.floor(baseDamage * typeMultiplier * rand);
+    return { totalDamage: Math.max(5, totalDamage), typeMultiplier };
+  }
+
+  function animateAttack(attackerSpriteId, defenderSpriteId) {
+    const attacker = document.getElementById(attackerSpriteId);
+    const defender = document.getElementById(defenderSpriteId);
+
+    attacker.classList.add('flash');
+    defender.classList.add('shake');
+
+    setTimeout(() => attacker.classList.remove('flash'), 600);
+    setTimeout(() => defender.classList.remove('shake'), 600);
+  }
+
+  function playerAttack(move, moveType) {
+    if (player.hp <= 0 || enemy.hp <= 0) return;
+
+    if (moveType === "Heal") {
+      const heal = 20;
+      player.hp = Math.min(player.maxHp, player.hp + heal);
+      log(`💧 Penguinmon used Aqua Heal! Restored ${heal} HP!`);
+      updateHpBars();
+      return setTimeout(enemyTurn, 1000);
+    }
+
+    const movePower = moveType === "Water" ? 22 : 26;
+    const { totalDamage, typeMultiplier } = damageCalc(player, enemy, movePower, moveType);
+
+    animateAttack('player-sprite', 'enemy-sprite');
+
+    enemy.hp = Math.max(0, enemy.hp - totalDamage);
+    let typeMsg = "";
+    if (typeMultiplier > 1.2) typeMsg = "It's super effective!";
+    else if (typeMultiplier < 1.0) typeMsg = "It's not very effective...";
+    log(`🐧 Penguinmon used ${move}! It dealt ${totalDamage} damage! ${typeMsg}`);
+
+    updateHpBars();
+    checkBattleEnd();
+
+    if (enemy.hp > 0) setTimeout(enemyTurn, 1200);
+  }
+
+  function enemyTurn() {
+    if (enemy.hp <= 0) return;
+
+    const moves = [
+      { name: "Frost Bite", power: 22, type: "Ice" },
+      { name: "Blizzard Roar", power: 28, type: "Ice" }
+    ];
+    const move = moves[Math.floor(Math.random() * moves.length)];
+    const { totalDamage, typeMultiplier } = damageCalc(enemy, player, move.power, move.type);
+
+    animateAttack('enemy-sprite', 'player-sprite');
+
+    player.hp = Math.max(0, player.hp - totalDamage);
+    let typeMsg = "";
+    if (typeMultiplier > 1.2) typeMsg = "It's super effective!";
+    else if (typeMultiplier < 1.0) typeMsg = "It's not very effective...";
+    log(`🐻 Bearon used ${move.name}! It dealt ${totalDamage} damage! ${typeMsg}`);
+
+    updateHpBars();
+    checkBattleEnd();
+  }
+
+  function checkBattleEnd() {
+    if (enemy.hp <= 0) log("🎉 You win! Bearon fainted!");
+    else if (player.hp <= 0) log("💀 Penguinmon fainted! You lose!");
+  }
+
+  updateHpBars();
+  log("A wild Bearon appeared!");
+</script>
+
+</body>
+</html>
