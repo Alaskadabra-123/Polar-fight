@@ -1,0 +1,314 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Penguins vs Polar Bears — Sprites + Shake</title>
+  <style>
+    :root{
+      --bg:#f3f7fb; --card:#fff; --accent:#3b82f6; --muted:#6b7280;
+    }
+    html,body{height:100%;margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,"Helvetica Neue",Arial;}
+    body{background:var(--bg);display:flex;align-items:center;justify-content:center;padding:24px;}
+    .app{width:900px;max-width:100%;background:var(--card);border-radius:12px;box-shadow:0 6px 30px rgba(15,23,42,0.08);padding:20px;}
+    h1{margin:0 0 8px;font-size:20px}
+    p.sub{margin:0 0 16px;color:var(--muted);font-size:13px}
+    .row{display:flex;gap:12px;align-items:center}
+    .center{justify-content:center}
+    .select-grid{display:flex;gap:12px}
+    .team-card{flex:1;background:#f9fafb;border:1px solid #e6eef9;border-radius:10px;padding:14px;text-align:center;cursor:pointer;transition:transform .12s,box-shadow .12s}
+    .team-card:hover{transform:translateY(-4px);box-shadow:0 6px 18px rgba(59,130,246,0.08)}
+    .team-card.disabled{opacity:.45;cursor:not-allowed;transform:none;box-shadow:none}
+    .team-emoji{font-size:44px}
+    .btn{background:var(--accent);color:white;padding:8px 12px;border-radius:10px;border:0;cursor:pointer}
+    .btn.ghost{background:transparent;color:var(--accent);border:1px solid #dbeafe}
+    .hp-bar{height:10px;background:#e6eef9;border-radius:12px;overflow:hidden;width:240px}
+    .hp-fill{height:100%;background:#ef4444;width:100%;transition:width .25s}
+    .panel{background:#fff;border-radius:10px;padding:12px;border:1px solid #eef2ff}
+    .moves-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
+    .move-btn{display:flex;justify-content:space-between;align-items:center;padding:8px;border-radius:8px;border:1px solid #eef2ff;background:#f8fbff;cursor:pointer}
+    .move-icon{font-size:18px;margin-right:8px}
+    .log{max-height:160px;overflow:auto;padding:8px;background:#fbfdff;border-radius:8px;border:1px solid #eef2ff}
+    .log-item{font-size:13px;padding:6px;border-radius:6px;background:#fff;margin-bottom:6px;border:1px solid #f1f5f9}
+    .muted{color:var(--muted);font-size:13px}
+    .winner{background:#fff8e6;border-color:#ffedd5;color:#92400e;padding:12px;border-radius:10px;font-weight:600}
+    .small{font-size:12px;color:var(--muted)}
+    footer{margin-top:12px;text-align:center;font-size:12px;color:var(--muted)}
+
+    /* NEW: Sprite display */
+    .sprite {
+      width: 64px;
+      height: 64px;
+      object-fit: contain;
+      image-rendering: pixelated;
+    }
+
+    /* NEW: Shake Animation */
+    @keyframes hitShake {
+      0%, 100% { transform: translateX(0); }
+      20% { transform: translateX(-8px); }
+      40% { transform: translateX(8px); }
+      60% { transform: translateX(-6px); }
+      80% { transform: translateX(6px); }
+    }
+    .shake {
+      animation: hitShake 0.35s ease;
+    }
+  </style>
+</head>
+<body>
+  <div class="app" id="app">
+    <h1>Penguins 🐧 vs Polar Bears 🐻‍❄️</h1>
+    <p class="sub">Two-player hot-seat — choose characters, take turns, and win. Now with sprites + attack shake.</p>
+
+    <!-- Selection -->
+    <div id="selectionRoot">
+      <div id="selectionContent" class="panel"></div>
+    </div>
+
+    <!-- Battle -->
+    <div id="battleRoot" style="display:none">
+      <div style="display:flex;gap:18px;align-items:center;flex-wrap:wrap;margin-bottom:12px">
+        <div class="panel" style="flex:1">
+          <div class="row">
+            <div style="width:64px;text-align:center"><img id="p1Sprite" class="sprite" src=""></div>
+            <div style="flex:1">
+              <div id="p1Name" style="font-weight:600">Player 1</div>
+              <div class="row" style="align-items:center;gap:10px;margin-top:6px">
+                <div class="hp-bar"><div id="p1Fill" class="hp-fill"></div></div>
+                <div id="p1HP" class="small">150/150</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel" style="flex:1;text-align:right">
+          <div class="row" style="justify-content:flex-end">
+            <div style="flex:1">
+              <div id="p2Name" style="font-weight:600">Player 2</div>
+              <div class="row" style="justify-content:flex-end;align-items:center;gap:10px;margin-top:6px">
+                <div id="p2HP" class="small">150/150</div>
+                <div class="hp-bar" style="width:240px"><div id="p2Fill" class="hp-fill"></div></div>
+              </div>
+            </div>
+            <div style="width:64px;text-align:center"><img id="p2Sprite" class="sprite" src=""></div>
+          </div>
+        </div>
+      </div>
+
+      <div id="turnPanel" class="panel" style="margin-bottom:12px">
+        <div class="row" style="justify-content:space-between;align-items:center">
+          <div><strong id="turnLabel">Penguin's Turn</strong> <span class="small" id="turnEmoji">🐧</span></div>
+          <div class="row">
+            <button class="btn ghost" id="resetBtn">Back to Selection</button>
+            <button class="btn" id="newGameBtn" style="margin-left:8px">Reset Match</button>
+          </div>
+        </div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 360px;gap:12px">
+        <div class="panel">
+          <div><strong>Available Moves</strong></div>
+          <div class="moves-grid" id="movesGrid" style="margin-top:10px"></div>
+        </div>
+
+        <div class="panel">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+            <strong>Battle Log</strong><div class="small muted">latest first</div>
+          </div>
+          <div class="log" id="log"></div>
+        </div>
+      </div>
+
+      <div id="endBox" style="margin-top:12px"></div>
+    </div>
+
+    <footer>Sprites + Shake Edition</footer>
+  </div>
+
+<script>
+(function(){
+  const MAX_HP = 150;
+  const DAMAGE_SCALE = MAX_HP / 100;
+  const CRIT_CHANCE = 0.2;
+
+  const TEAMS = { PENGUIN:'penguin', BEAR:'bear' };
+  const ELEMENT_ADV = { Ice:'Water', Water:'Rock', Earth:'Air', Rock:'Ice' };
+  const REACTIONS = {
+    Ice: { Water:'Freeze Reaction — extra 2 dmg!' },
+    Water: { Rock:'Erosion — +2 dmg!' },
+    Earth: { Air:'Dust Burst — +1 dmg!' },
+    Rock: { Ice:'Crack Chill — defense break!' }
+  };
+
+  function emojiFor(t){return t===TEAMS.PENGUIN?'🐧':'🐻‍❄️';}
+  function rndChance(p){return Math.random()<p;}
+  function getReaction(e1,e2){return REACTIONS[e1]?.[e2]||REACTIONS[e2]?.[e1]||null;}
+  function ELEMENT_ADVANTAGE(e1,e2){return ELEMENT_ADV[e1]===e2;}
+
+  const CHARACTERS = {
+    penguin:{
+      id:'penguin',team:TEAMS.PENGUIN,name:'Penguin',hp:MAX_HP,
+      moves:[
+        {name:'Frost Peck', power:Math.round(6*DAMAGE_SCALE), element:'Ice', symbol:'❄️'},
+        {name:'Aqua Dash', power:Math.round(8*DAMAGE_SCALE), element:'Water', symbol:'💧'},
+        {name:'Chill Heal', power:Math.round(-5*DAMAGE_SCALE), element:'Heal', symbol:'✨'},
+        {name:'Wind Flap', power:Math.round(6*DAMAGE_SCALE), element:'Air', symbol:'💨'}
+      ]
+    },
+    bear:{
+      id:'bear',team:TEAMS.BEAR,name:'Polar Bear',hp:MAX_HP,
+      moves:[
+        {name:'Claw Swipe', power:Math.round(7*DAMAGE_SCALE), element:'Earth', symbol:'🌍'},
+        {name:'Blizzard Roar', power:Math.round(8*DAMAGE_SCALE), element:'Ice', symbol:'❄️'},
+        {name:'Hibernate', power:Math.round(-6*DAMAGE_SCALE), element:'Heal', symbol:'💤'},
+        {name:'Tundra Smash', power:Math.round(9*DAMAGE_SCALE), element:'Rock', symbol:'🪨'}
+      ]
+    }
+  };
+
+  let P1=null, P2=null, turn=TEAMS.PENGUIN, history=[];
+
+  const selectionContent=document.getElementById('selectionContent');
+  const selectionRoot=document.getElementById('selectionRoot');
+  const battleRoot=document.getElementById('battleRoot');
+  const p1Sprite=document.getElementById('p1Sprite');
+  const p2Sprite=document.getElementById('p2Sprite');
+  const p1Fill=document.getElementById('p1Fill');
+  const p2Fill=document.getElementById('p2Fill');
+  const p1HP=document.getElementById('p1HP');
+  const p2HP=document.getElementById('p2HP');
+  const turnLabel=document.getElementById('turnLabel');
+  const turnEmoji=document.getElementById('turnEmoji');
+  const movesGrid=document.getElementById('movesGrid');
+  const logEl=document.getElementById('log');
+  const endBox=document.getElementById('endBox');
+  const resetBtn=document.getElementById('resetBtn');
+  const newGameBtn=document.getElementById('newGameBtn');
+
+  function renderSelection(){
+    selectionContent.innerHTML=`
+      <div style="display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap">
+        <div style="flex:1;min-width:260px">
+          <div style="font-weight:600;margin-bottom:8px">Player 1 — Choose a team</div>
+          <div class="select-grid" id="p1Choices"></div>
+        </div>
+        <div style="flex:1;min-width:260px">
+          <div style="font-weight:600;margin-bottom:8px">Player 2 — Choose a team</div>
+          <div class="select-grid" id="p2Choices"></div>
+        </div>
+      </div>
+      <div style="margin-top:12px;text-align:center" id="startArea"></div>
+    `;
+
+    const p1Choices=document.getElementById('p1Choices');
+    const p2Choices=document.getElementById('p2Choices');
+    const startArea=document.getElementById('startArea');
+
+    ['penguin','bear'].forEach(team=>{
+      const c1=document.createElement('div');
+      c1.className='team-card';
+      c1.innerHTML=`<div class="team-emoji">${emojiFor(team==='penguin'?TEAMS.PENGUIN:TEAMS.BEAR)}</div><div>${team==='penguin'?'Penguin':'Polar Bear'}</div>`;
+      c1.onclick=()=>{P1=JSON.parse(JSON.stringify(CHARACTERS[team]));renderSelection();};
+      if(P1&&P1.id===team) c1.style.boxShadow='0 6px 18px rgba(59,130,246,0.12)';
+      p1Choices.appendChild(c1);
+
+      const c2=document.createElement('div');
+      c2.className='team-card';
+      c2.innerHTML=`<div class="team-emoji">${emojiFor(team==='penguin'?TEAMS.PENGUIN:TEAMS.BEAR)}</div><div>${team==='penguin'?'Penguin':'Polar Bear'}</div>`;
+      c2.onclick=()=>{P2=JSON.parse(JSON.stringify(CHARACTERS[team]));renderSelection();};
+      if(P2&&P2.id===team) c2.style.boxShadow='0 6px 18px rgba(59,130,246,0.12)';
+      p2Choices.appendChild(c2);
+    });
+
+    const startBtn=document.createElement('button');
+    startBtn.className='btn';
+    startBtn.textContent='Start Battle';
+    startBtn.disabled=!(P1&&P2);
+    startBtn.onclick=()=>{
+      turn=TEAMS.PENGUIN; history=[]; endBox.innerHTML='';
+      selectionRoot.style.display='none';
+      battleRoot.style.display='';
+      updateBattleUI();
+    };
+    startArea.appendChild(startBtn);
+  }
+
+  function updateBattleUI(){
+    p1Sprite.src = (P1.team===TEAMS.PENGUIN) ? 'img/penguin.png' : 'img/bear.png';
+    p2Sprite.src = (P2.team===TEAMS.PENGUIN) ? 'img/penguin.png' : 'img/bear.png';
+
+    p1Fill.style.width=(P1.hp/MAX_HP*100)+'%';
+    p2Fill.style.width=(P2.hp/MAX_HP*100)+'%';
+    p1HP.textContent=`${P1.hp}/${MAX_HP}`;
+    p2HP.textContent=`${P2.hp}/${MAX_HP}`;
+    turnLabel.textContent=(turn===TEAMS.PENGUIN?'Penguin':'Polar Bear')+"'s Turn";
+    turnEmoji.textContent=emojiFor(turn);
+
+    movesGrid.innerHTML='';
+    (turn===TEAMS.PENGUIN?P1:P2).moves.forEach(m=>{
+      const b=document.createElement('button');
+      b.className='move-btn';
+      b.innerHTML=`<span><span class="move-icon">${m.symbol}</span><strong>${m.name}</strong></span><span class="small">${m.power>=0?m.power:'heal '+Math.abs(m.power)}</span>`;
+      b.onclick=()=>!isOver()&&performMove(m);
+      movesGrid.appendChild(b);
+    });
+
+    logEl.innerHTML = history.map(e=>`<div class="log-item">${e}</div>`).join('');
+  }
+
+  function isOver(){return P1.hp<=0||P2.hp<=0;}
+
+  function performMove(move){
+    let attacker=(turn===TEAMS.PENGUIN?P1:P2);
+    let defender=(turn===TEAMS.PENGUIN?P2:P1);
+    let msg=`${attacker.name} ${move.symbol} used ${move.name}!`;
+
+    if(move.power>0){
+      const isCrit=rndChance(CRIT_CHANCE);
+      let dmg=isCrit?move.power*2:move.power;
+      const randDefElem=defender.moves[Math.floor(Math.random()*defender.moves.length)].element;
+
+      if(ELEMENT_ADVANTAGE(move.element,randDefElem)){
+        dmg=Math.round(dmg*1.5);
+        msg+=' 🌟 Element Advantage!';
+      }
+
+      defender.hp=Math.max(0,defender.hp-dmg);
+      if(isCrit) msg+=` 💥 Critical Hit! (${dmg} dmg)`;
+
+      const reaction=getReaction(move.element,randDefElem);
+      if(reaction){
+        defender.hp=Math.max(0,defender.hp-Math.round(2*DAMAGE_SCALE));
+        msg+=' ⚗️ '+reaction;
+      }
+
+      const defenderSprite = (turn===TEAMS.PENGUIN?document.getElementById('p2Sprite'):document.getElementById('p1Sprite'));
+      defenderSprite.classList.remove('shake'); void defenderSprite.offsetWidth; defenderSprite.classList.add('shake');
+
+    } else {
+      const heal=Math.abs(move.power);
+      attacker.hp=Math.min(MAX_HP,attacker.hp+heal);
+      msg+=` ✨ Healed ${heal} HP!`;
+    }
+
+    history.unshift(msg);
+    updateBattleUI();
+
+    if(isOver()){
+      endBox.innerHTML=`<div class="winner">🏆 ${P1.hp>0?'Player 1':'Player 2'} wins!</div>`;
+      return;
+    }
+
+    turn=(turn===TEAMS.PENGUIN?TEAMS.BEAR:TEAMS.PENGUIN);
+    updateBattleUI();
+  }
+
+  resetBtn.onclick=()=>{selectionRoot.style.display='';battleRoot.style.display='none';renderSelection();};
+  newGameBtn.onclick=()=>{P1.hp=MAX_HP;P2.hp=MAX_HP;history=[];endBox.innerHTML='';turn=TEAMS.PENGUIN;updateBattleUI();};
+  renderSelection();
+})();
+</script>
+
+</body>
+</html>
